@@ -1,0 +1,21 @@
+syntax = "proto3";
+package proto;
+
+option go_package = ;
+
+service DistGrep {
+  rpc StartGrep(GrepRequest) returns (GrepResult);
+}
+
+// Il messaggio di richiesta da inviare dal master verso un worker
+message GrepRequest {
+  string file_portion = 1;
+  string regex = 2;
+}
+
+// il messaggio di risposta che il worker deve inviare al master
+message GrepResult {
+  string rows = 1;
+  int64 row_number = 2;
+}
+
