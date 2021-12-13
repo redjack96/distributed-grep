@@ -12,10 +12,10 @@ const (
 
 // Task una sorta di lambda
 type Task func() []string
+
 // TODO: usare gRPC
 func StartMaster(data, grep string) {
 	fmt.Printf("Master started at %s:%d\n", address, port)
-
 
 	var channel = make(chan int)
 
@@ -25,7 +25,7 @@ func StartMaster(data, grep string) {
 
 	// se il main finisce prima delle goroutine, non stamperanno nulla
 	for i := 0; i < MaxWorkers; i++ {
-		<- channel // aspetto il worker
+		<-channel // aspetto il worker
 	}
 
 	// grep semplice
@@ -39,9 +39,9 @@ func StartMaster(data, grep string) {
 	fmt.Printf("Master exited\n")
 }
 
-func _map(){
+func _map() {
 
 }
-func _reduce(){
+func _reduce() {
 
 }

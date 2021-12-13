@@ -1,9 +1,9 @@
 package main
 
 import (
-	"distributed-grep/map-reduce"
-	"distributed-grep/util"
 	"fmt"
+	mapreduce "github.com/redjack/distributed-grep/src/map-reduce"
+	"github.com/redjack/distributed-grep/src/util"
 	"os"
 )
 
@@ -24,5 +24,5 @@ func main() {
 func startGrep(file string, regex string) {
 	var data, err = os.ReadFile(file) // Leggo l'intero file
 	util.PanicIf(err)
-	map_reduce.StartMaster(string(data), regex)
+	mapreduce.StartMaster(string(data), regex)
 }
