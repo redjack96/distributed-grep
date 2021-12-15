@@ -1,7 +1,7 @@
 syntax = "proto3";
 package proto;
 
-option go_package = ;
+option go_package = "github.com/redjack;distributed_grep";
 
 service DistGrep {
   rpc StartGrep(GrepRequest) returns (GrepResult);
@@ -11,11 +11,13 @@ service DistGrep {
 message GrepRequest {
   string file_portion = 1;
   string regex = 2;
+  int32 worker_id = 3;
 }
 
 // il messaggio di risposta che il worker deve inviare al master
 message GrepResult {
   string rows = 1;
   int64 row_number = 2;
+  int32 worker_id = 3;
 }
 
