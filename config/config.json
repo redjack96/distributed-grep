@@ -1,0 +1,6 @@
+{
+  "MasterPort": 6767,
+  "BaseClientPort": 8000,
+  "Address" : "localhost",
+  "MaxWorkers" : 10
+}

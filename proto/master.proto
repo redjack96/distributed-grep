@@ -1,0 +1,22 @@
+syntax = "proto3";
+package proto;
+
+option go_package = "github.com/redjack;distributed_grep";
+
+// Servizio per richiedere al master di effettuare la Grep
+service GoGrep {
+  rpc DistributedGrep(GrepRequest) returns (GrepResult);
+}
+
+// Il messaggio di richiesta client-master
+message GrepRequest {
+  string file_path = 1;
+  string regex = 2;
+}
+
+// il messaggio di risposta master-client
+message GrepResult {
+  string rows = 1;
+  string error = 2;
+}
+

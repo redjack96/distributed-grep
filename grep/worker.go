@@ -1,4 +1,4 @@
-package map_reduce
+package main
 
 import (
 	"context"
@@ -10,9 +10,10 @@ import (
 	"strings"
 )
 
-// grepServer is used to implement proto.DistGrepServer.
+// grepServer is used to implement proto.DistGrepServer. Rappresenta un worker.
 type taskServer struct {
-	pb.GrepTaskServer // questa struct è necessaria per retrocompatibilità. Campo anonimo: si può accedere con <variabile taskServer>.UnimplementedDisttaskServer
+	pb.GrepTaskServer     // questa struct è necessaria per retrocompatibilità. Campo anonimo: si può accedere con <variabile taskServer>.UnimplementedDisttaskServer
+	id                int // l' id del worker
 }
 
 // Map - funzione che esegue una map grep su una porzione di file
@@ -35,23 +36,36 @@ func (s *taskServer) Map(ctx context.Context, in *pb.GrepInput) (*pb.GrepOutput,
 	}, nil
 }
 
-// RegisterWorker deve fare da taskServer a cui richiedere di svolgere la map(), ovvero una grep
-// Al termine restituirà la risposta al master.
-func RegisterWorker(id int, channel chan int32) {
-	conf := util.GetConfig()
+func main() {
+	lis, id := tryListen()
+	util.PanicIf(id == -1, "Worker - Impossibile trovare una porta libera. Esco.")
 
-	port := conf.BaseClientPort + (id % conf.MaxWorkers)
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-	util.PanicIfMessage(err, fmt.Sprintf("Worker %d Fallimento Listen()", id))
 	s := grpc.NewServer()
-	pb.RegisterGrepTaskServer(s, &taskServer{}) // registra i servizi del server
+	pb.RegisterGrepTaskServer(s, &taskServer{id: id}) // registra i servizi del server
 
-	fmt.Printf("Worker listening at %v\n", lis.Addr())
+	fmt.Printf("Worker %d listening at %v\n", id, lis.Addr())
 
 	// Servo le richiesta del master -.-
-	err = s.Serve(lis)
+	err := s.Serve(lis)
 	util.PanicIfMessage(err, fmt.Sprintf("Worker %d: Fallimento Serve()", id))
-	fmt.Printf("Worker %d", id)
 
 	fmt.Printf("Worker %d exited\n", id)
+}
+
+func tryListen() (net.Listener, int) {
+	var lis net.Listener
+	var err error
+
+	conf := util.GetConfig()
+
+	for port := conf.BaseClientPort; port < conf.BaseClientPort+conf.MaxWorkers; port++ {
+		lis, err = net.Listen("tcp", fmt.Sprintf("%s:%d", conf.Address, port))
+		if err == nil {
+			return lis, port - conf.BaseClientPort
+		}
+	}
+
+	fmt.Printf("Impossibile trovare una porta aperta nel range %d-%d\n",
+		conf.BaseClientPort, conf.BaseClientPort+conf.MaxWorkers-1)
+	return lis, -1
 }
