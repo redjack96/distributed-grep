@@ -12,27 +12,18 @@ import (
 	"time"
 )
 
-// taskMaster implement proto.MapReduceGrepClient. Permette la comunicazione RPC con i worker. Usata nel service RPC
-type taskMaster struct {
-	pb.GrepTaskClient // Questa struct è necessaria per retro-compatibilità. Campo anonimo: si può accedere con <variabile grepMaster>.UnimplementedDistGrepServer
-}
-
 // serverMaster implement proto.MasterGrepServer. Permette la comunicazione RPC con un client. Usata nella main
 type serverMaster struct {
 	pb.GoGrepServer
 }
 
-var conf = util.GetConfig()
+var Conf = util.GetConfig()
+var mapConnectionTask = make(map[*grpc.ClientConn]*pb.GrepTaskClient)
 
 // DistributedGrep - funzione che risponde a un client
 func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) (*pb.GrepResult, error) {
 
 	fmt.Printf("Avviata grep sul file %s per cercare '%s'\n", in.FilePath, in.Regex) // %v permette di stampare solo i valori di una struct
-
-	mapConnectionTask := make(map[*grpc.ClientConn]*pb.GrepTaskClient)
-
-	connectToWorkers(mapConnectionTask)
-	fmt.Println("Numero di workers individuati: ", len(mapConnectionTask))
 
 	fileContent, err := os.ReadFile(in.FilePath)
 	if err != nil {
@@ -40,14 +31,13 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	}
 	lines := strings.Split(string(fileContent), "\n")
 	numLines := len(lines)
-	linesPerChunk := numLines / conf.MaxWorkers
+	linesPerChunk := numLines / Conf.MaxWorkers
 	fmt.Printf("lines: %d lines per chunk: %d\n", len(lines), linesPerChunk)
 	// assegno un chunk per worker
 
 	var mapOutput []*pb.GrepOutput
 	i := 0
 	for _, client := range mapConnectionTask {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		var partialOutput *pb.GrepOutput
 		var err error
 		if client != nil {
@@ -59,14 +49,13 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 			})
 			util.PanicOn(err)
 		}
-		cancel()
 		mapOutput = append(mapOutput, partialOutput)
 		i++
 	}
 
 	//shuffleOutput := ShuffleAndSort(mapOutput)
 	//ReduceGrep(shuffleOutput, workers)
-	var grepped = make([]string, 0, conf.MaxWorkers)
+	var grepped = make([]string, 0, Conf.MaxWorkers)
 	for _, output := range mapOutput {
 		if output != nil {
 			grepped = append(grepped, output.Rows)
@@ -87,20 +76,41 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	}, nil
 }
 
-func connectToWorkers(mapConnectionTask map[*grpc.ClientConn]*pb.GrepTaskClient) {
+func connectToWorkers(mapConnectionTask map[*grpc.ClientConn]*pb.GrepTaskClient) int {
+	// channels := make([]chan *grpc.ClientConn, Conf.MaxWorkers)
+	var channels [10]chan *grpc.ClientConn
 
-	// Creo un client per ogni connessione/worker disponibile
-
-	for port := conf.BaseClientPort; port < conf.BaseClientPort+conf.MaxWorkers; port++ {
-		clientConn, err := grpc.Dial(fmt.Sprintf("%s:%d", conf.Address, port), grpc.WithInsecure(), grpc.WithBlock()) // CHIAMATA ASINCRONA (senza TLS)
-		util.PanicOn(err)
-		if clientConn != nil {
-			client := pb.NewGrepTaskClient(clientConn)
-			mapConnectionTask[clientConn] = &client
-		}
+	for port := Conf.BaseClientPort; port < Conf.BaseClientPort+Conf.MaxWorkers; port++ {
+		ch := make(chan *grpc.ClientConn)
+		target := fmt.Sprintf("%s:%d", Conf.Address, port)
+		go gonnection(target, ch)
+		// channels = append(channels, ch)
+		channels[port-Conf.BaseClientPort] = ch
 	}
 
-	fmt.Printf("Connesso con %d workers", len(mapConnectionTask))
+	for i, ch := range channels {
+		conn := <-ch
+		if conn != nil {
+			fmt.Printf("Instaurata connessione con worker %d\n", i)
+			clientTask := pb.NewGrepTaskClient(conn)
+			mapConnectionTask[conn] = &clientTask
+		}
+	}
+	return len(mapConnectionTask)
+}
+
+func gonnection(target string, channel chan *grpc.ClientConn) {
+	timeout, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+	defer cancelFunc()
+	clientConn, err := grpc.DialContext(timeout, target, grpc.WithInsecure(), grpc.WithBlock()) // CHIAMATA ASINCRONA (senza TLS)
+	if err != nil {
+		fmt.Println("Errore nella master goroutine per connettersi a", target, err)
+		channel <- nil
+		return
+	}
+
+	channel <- clientConn
+	fmt.Println("Master goroutine exited for address connection ", target)
 }
 
 func ReduceGrep(clientConnections []*pb.GrepTaskClient) []*pb.GrepOutput {
@@ -126,7 +136,7 @@ func ReduceGrep(clientConnections []*pb.GrepTaskClient) []*pb.GrepOutput {
 }
 
 func closeConnection(clientMap map[*grpc.ClientConn]*pb.GrepTaskClient) {
-	for connection, _ := range clientMap {
+	for connection := range clientMap {
 		if connection != nil {
 			_ = (*connection).Close()
 		}
@@ -135,10 +145,15 @@ func closeConnection(clientMap map[*grpc.ClientConn]*pb.GrepTaskClient) {
 
 func main() {
 	// Prendo i valori dell' indirizzo e della porta da un file di configurazione
-	conf := util.GetConfig()
-	addr := conf.Address
-	port := conf.MasterPort
+	addr := Conf.Address
+	port := Conf.MasterPort
 
+	// Prima di andare a servire, mi connetto ai workers disponibili...
+	nWorkers := connectToWorkers(mapConnectionTask)
+	defer closeConnection(mapConnectionTask)
+	fmt.Println("Numero di workers individuati: ", nWorkers)
+
+	// Faccio da server
 	lis, err := net.Listen("tcp", fmt.Sprintf("%s:%d", addr, port))
 	util.PanicIfMessage(err, "Master: error in Listen()")
 

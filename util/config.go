@@ -35,6 +35,5 @@ func GetConfigFilePath() string {
 	if strings.Contains("windows", runtime.GOOS) {
 		strings.Replace(filePath, "/", "\\", -1)
 	}
-	fmt.Println("dir: ", filepath.Dir(dirname))
 	return filePath
 }

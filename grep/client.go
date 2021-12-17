@@ -24,14 +24,11 @@ func main() {
 	}
 }
 
-// TODO: Domande
-//  Cosa dobbiamo implementare della grep? Va bene solo la ricerca semplice e stampa della linea in cui c'è match in uno schema di map-reduce master-worker ?
-
 func startGrep(file, regex string) {
 
 	conf := util.GetConfig()
 
-	clientConn, err := grpc.Dial(fmt.Sprintf("%s:%d", conf.Address, conf.MasterPort), grpc.WithInsecure(), grpc.WithBlock()) // CHIAMATA ASINCRONA (senza TLS)
+	clientConn, err := grpc.Dial(fmt.Sprintf("%s:%d", conf.Address, conf.MasterPort), grpc.WithInsecure(), grpc.WithBlock())
 	util.PanicOn(err)
 	client := pb.NewGoGrepClient(clientConn)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
