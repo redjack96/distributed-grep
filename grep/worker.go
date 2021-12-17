@@ -30,7 +30,7 @@ func (s *taskServer) Map(ctx context.Context, in *pb.GrepInput) (*pb.GrepOutput,
 			result += fmt.Sprintf("%s\n", lines[i]) // salvo le righe con un match in una stringa unica
 		}
 	}
-	rowFound := int64(strings.Count(result, "\n") + 1)
+	rowFound := int64(strings.Count(result, "\n"))
 	fmt.Printf("Worker %d Fine della ricerca - righe: %d\n", in.WorkerId, rowFound)
 	return &pb.GrepOutput{
 		Rows:      result,

@@ -31,34 +31,32 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	}
 	lines := strings.Split(string(fileContent), "\n")
 	numLines := len(lines)
-	linesPerChunk := numLines / Conf.MaxWorkers
+	linesPerChunk := numLines / len(mapConnectionTask) // divido per il numero di worker
 	fmt.Printf("lines: %d lines per chunk: %d\n", len(lines), linesPerChunk)
 	// assegno un chunk per worker
 
-	var mapOutput []*pb.GrepOutput
+	outChannels := make([]chan *pb.GrepOutput, 0, Conf.MaxWorkers)
+
+	// MAP TASK
 	i := 0
 	for _, client := range mapConnectionTask {
-		var partialOutput *pb.GrepOutput
-		var err error
-		if client != nil {
-			fileChunk := strings.Join(lines[i*linesPerChunk:(i+1)*linesPerChunk-1], "\n")
-			partialOutput, err = (*client).Map(ctx, &pb.GrepInput{
-				FilePortion: fileChunk,
-				Regex:       in.Regex,
-				WorkerId:    int32(i), // TODO: non è proprio corretto, andrebbe messo porta - 8000
-			})
-			util.PanicOn(err)
-		}
-		mapOutput = append(mapOutput, partialOutput)
+		fileChunk := strings.Join(lines[i*linesPerChunk:(i+1)*linesPerChunk-1], "\n")
+		canaleOutput := make(chan *pb.GrepOutput)
+		go Map(ctx, canaleOutput, client, &pb.GrepInput{
+			FilePortion: fileChunk,
+			Regex:       in.Regex,
+			WorkerId:    int32(i),
+		})
+		outChannels = append(outChannels, canaleOutput)
 		i++
 	}
 
-	//shuffleOutput := ShuffleAndSort(mapOutput)
-	//ReduceGrep(shuffleOutput, workers)
+	// Barriera di sincronizzazione per MAP
 	var grepped = make([]string, 0, Conf.MaxWorkers)
-	for _, output := range mapOutput {
-		if output != nil {
-			grepped = append(grepped, output.Rows)
+	for _, ch := range outChannels {
+		out := <-ch
+		if out != nil {
+			grepped = append(grepped, out.Rows)
 		}
 	}
 	finalResult := strings.Join(grepped, "\n")
@@ -76,41 +74,53 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	}, nil
 }
 
-func connectToWorkers(mapConnectionTask map[*grpc.ClientConn]*pb.GrepTaskClient) int {
-	// channels := make([]chan *grpc.ClientConn, Conf.MaxWorkers)
-	var channels [10]chan *grpc.ClientConn
+func Map(ctx context.Context, canale chan *pb.GrepOutput, client *pb.GrepTaskClient, in *pb.GrepInput) {
 
+	partialOutput, err := (*client).Map(ctx, in)
+	if err != nil {
+		canale <- &pb.GrepOutput{}
+		return
+	}
+	canale <- partialOutput
+}
+
+func connectToWorkers(mapConnectionTask map[*grpc.ClientConn]*pb.GrepTaskClient) int {
+	// Creo una slice con capacità 10 e dimensione iniziale 0
+	channels := make([]chan *grpc.ClientConn, 0, Conf.MaxWorkers)
+
+	// Provo con tutte le porte tra [Conf.BaseClientPort, Conf.BaseClientPort + Conf.MaxWorkers]
 	for port := Conf.BaseClientPort; port < Conf.BaseClientPort+Conf.MaxWorkers; port++ {
 		ch := make(chan *grpc.ClientConn)
 		target := fmt.Sprintf("%s:%d", Conf.Address, port)
-		go gonnection(target, ch)
-		// channels = append(channels, ch)
-		channels[port-Conf.BaseClientPort] = ch
+
+		// Chiamo una goroutine anonima per connettermi in modo asincrono con tutti i workers disponibili
+		go func(target string, channel chan *grpc.ClientConn) {
+			// Utilizzo un timeout di un secondo nella goroutine per fare in modo che il master si connetta con l' eventuale worker all'indirizzo target
+			timeout, cancelFunc := context.WithTimeout(context.Background(), time.Second)
+			defer cancelFunc()
+			clientConn, err := grpc.DialContext(timeout, target, grpc.WithInsecure(), grpc.WithBlock()) // CHIAMATA ASINCRONA (senza TLS)
+			if err != nil {
+				// fmt.Println("Errore nella master goroutine per connettersi a", target, err)
+				channel <- nil
+				return
+			}
+
+			channel <- clientConn
+			// fmt.Println("Master gonnection goroutine: SUCCESS for ", target)
+		}(target, ch)
+
+		channels = append(channels, ch) // Funziona solo se la slice ha dimensione iniziale 0 e capacity = Conf.MaxWorkers (non funziona con make(..., int) senza 3° parametro)
 	}
 
-	for i, ch := range channels {
+	for _, ch := range channels {
 		conn := <-ch
 		if conn != nil {
-			fmt.Printf("Instaurata connessione con worker %d\n", i)
+			//fmt.Printf("Instaurata connessione con worker %d\n", i)
 			clientTask := pb.NewGrepTaskClient(conn)
 			mapConnectionTask[conn] = &clientTask
 		}
 	}
 	return len(mapConnectionTask)
-}
-
-func gonnection(target string, channel chan *grpc.ClientConn) {
-	timeout, cancelFunc := context.WithTimeout(context.Background(), time.Second)
-	defer cancelFunc()
-	clientConn, err := grpc.DialContext(timeout, target, grpc.WithInsecure(), grpc.WithBlock()) // CHIAMATA ASINCRONA (senza TLS)
-	if err != nil {
-		fmt.Println("Errore nella master goroutine per connettersi a", target, err)
-		channel <- nil
-		return
-	}
-
-	channel <- clientConn
-	fmt.Println("Master goroutine exited for address connection ", target)
 }
 
 func ReduceGrep(clientConnections []*pb.GrepTaskClient) []*pb.GrepOutput {
