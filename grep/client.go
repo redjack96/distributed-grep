@@ -20,7 +20,6 @@ func main() {
 		startGrep(argv[1], argv[2]) // Come in C, il primo argomento sta a indice 1
 	default:
 		fmt.Println("Utilizzo:\ndistributed_grep file-path regex") // ci sarebbe anche println(), ma potrebbe essere rimossa nelle versioni successive
-		fmt.Println(util.GetConfigFilePath())
 	}
 }
 
@@ -31,7 +30,7 @@ func startGrep(file, regex string) {
 	clientConn, err := grpc.Dial(fmt.Sprintf("%s:%d", conf.Address, conf.MasterPort), grpc.WithInsecure(), grpc.WithBlock())
 	util.PanicOn(err)
 	client := pb.NewGoGrepClient(clientConn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
 	defer cancel()
 	grepResult, err := client.DistributedGrep(ctx, &pb.GrepRequest{
 		FilePath: file,

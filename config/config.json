@@ -1,6 +1,7 @@
 {
   "MasterPort": 6767,
-  "BaseClientPort": 8000,
+  "BaseWorkerPort": 8000,
   "Address" : "localhost",
-  "MaxWorkers" : 10
+  "MaxWorkers" : 10,
+  "RowsPerTask" : 200
 }
