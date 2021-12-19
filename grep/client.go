@@ -12,7 +12,7 @@ import (
 
 // Esempio di utilizzo del grep distribuito
 // Esegue una chiamata a procedura remota (sulla macchina locale)
-// Per lanciare via linea di comando, entra nella cartella main ed esegui "go run ."
+// Per lanciare via linea di comando, dalla root del progetto esegui "go run grep/main.go"
 func main() {
 	var argv = os.Args // il nome dell'eseguibile è l'elemento 0
 	switch len(argv) {
@@ -30,7 +30,7 @@ func startGrep(file, regex string) {
 	clientConn, err := grpc.Dial(fmt.Sprintf("%s:%d", conf.Address, conf.MasterPort), grpc.WithInsecure(), grpc.WithBlock())
 	util.PanicOn(err)
 	client := pb.NewGoGrepClient(clientConn)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*2)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*conf.Timeout)
 	defer cancel()
 	grepResult, err := client.DistributedGrep(ctx, &pb.GrepRequest{
 		FilePath: file,

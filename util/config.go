@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 )
 
 type Configuration struct {
@@ -16,6 +17,7 @@ type Configuration struct {
 	Address        string // L' indirizzo IP a cui il master e il worker si mettono in listening (localhost)
 	MaxWorkers     int    // Il numero massimo di workers
 	RowsPerTask    int    // Il numero di righe minimo per assegnare un task a un worker. Es: se 200 e il file ha [801-1000] righe si assegnano 5 task Map ai worker
+	Timeout        time.Duration
 }
 
 // GetConfig Restituisce un puntatore alla struct con i parametri di configurazione nel file config/config.json

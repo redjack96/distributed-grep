@@ -3,5 +3,6 @@
   "BaseWorkerPort": 8000,
   "Address" : "localhost",
   "MaxWorkers" : 10,
-  "RowsPerTask" : 200
+  "RowsPerTask" : 200,
+  "Timeout" : 2
 }

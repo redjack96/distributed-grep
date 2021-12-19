@@ -49,13 +49,13 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	taskForMap := int(math.Ceil(math.Min(float64(numLines)/float64(s.conf.RowsPerTask), float64(s.workers))))
 	linesPerChunk := int(math.Ceil(float64(numLines) / float64(taskForMap)))
 
-	fmt.Printf("- Linee nel file: \t%d. Linee per chunk Map: \t%d. Numero worker a cui assegnare Map tasks: \t%d\n", len(lines), linesPerChunk, taskForMap)
+	fmt.Printf("- Linee nel file: \t%d.\tLinee max per chunk Map: \t\t%d. Numero worker a cui assegnare Map tasks: \t\t%d\n", len(lines), linesPerChunk, taskForMap)
 
 	/***************** MAP TASK *****************/
 	for i := 0; i < taskForMap; i++ {
 		var fileChunk string
-		if (i+1)*linesPerChunk < len(lines) {
-			fileChunk = strings.Join(lines[i*linesPerChunk:(i+1)*linesPerChunk-1], "\n")
+		if i != taskForMap-1 {
+			fileChunk = strings.Join(lines[i*linesPerChunk:(i+1)*linesPerChunk], "\n")
 		} else {
 			fileChunk = strings.Join(lines[i*linesPerChunk:], "\n")
 		}
@@ -77,17 +77,17 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 	mapResult := strings.Join(mapOutput, "")
 
 	linesMap := strings.Split(mapResult, "\n")
-	numRigheMap := len(linesMap)
+	numRigheMap := len(linesMap) - 1
 	taskForReduce := int(math.Min(math.Ceil(float64(numRigheMap)/float64(s.conf.RowsPerTask)), float64(s.workers)))
 	linesPerChunkReduce := int(math.Ceil(float64(numRigheMap) / float64(taskForReduce)))
 
-	fmt.Printf("- Linee mappate: \t%d. Linee per chunk Reduce: \t%d. Numero worker a cui assegnare Reduce tasks: \t%d\n", numRigheMap, linesPerChunkReduce, taskForReduce)
+	fmt.Printf("- Linee mappate: \t%d.\tLinee max per chunk Reduce: \t%d. Numero worker a cui assegnare Reduce tasks: \t%d\n", numRigheMap, linesPerChunkReduce, taskForReduce)
 
 	/***************** REDUCE TASK *****************/
 	for i := 0; i < taskForReduce; i++ {
 		var fileChunk string
-		if (i+1)*linesPerChunk < len(linesMap) {
-			fileChunk = strings.Join(linesMap[i*linesPerChunkReduce:(i+1)*linesPerChunkReduce-1], "\n")
+		if i != taskForReduce-1 {
+			fileChunk = strings.Join(linesMap[i*linesPerChunkReduce:(i+1)*linesPerChunkReduce], "\n")
 		} else {
 			fileChunk = strings.Join(linesMap[i*linesPerChunkReduce:], "\n")
 		}
@@ -108,7 +108,7 @@ func (s *serverMaster) DistributedGrep(ctx context.Context, in *pb.GrepRequest) 
 		}
 	}
 	finalResult := strings.Join(reduceOutput, "\n")
-	fmt.Printf("Righe nel risultato: %d\n", len(reduceOutput))
+	fmt.Printf("Righe nel risultato: %d\n", strings.Count(finalResult, "\n"))
 	return &pb.GrepResult{
 		Rows: finalResult,
 	}, nil
