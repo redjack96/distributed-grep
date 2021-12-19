@@ -8,20 +8,24 @@ comunicazione tra master e worker e tra il programma principale client e il mast
 - Il progetto è stato testato Windows 10, ma dovrebbe funzionare anche su Linux o Mac
 - Se i file *.pb.go generati da protoc non sono presenti, generarli con il seguente comando
 
+    
     protoc --go_out=. --go_opt=paths=source_relative --go-grpc_out=. --go-grpc_opt=paths=source_relative proto\*.proto
 
 - Dalla root del progetto, lanciare da 1 a w=10 worker in terminali distinti. Il valore w è configurabile nel file
   config/config.json.
 
+    
     go run grep/worker.go
 
 - Dopo qualche secondo, dalla root del progetto, lanciare un master in un altro terminale.
 
+    
     go run grep/master.go    
 
 - Dalla root del progetto, lanciare un client con parametro1 pari al percorso del file e parametro2 la stringa da
   cercare:
 
+    
     go run grep/client.go grepfile.txt Lorem
 
 ## Dettagli sull' implementazione
